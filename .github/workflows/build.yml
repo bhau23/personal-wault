@@ -17,6 +17,15 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+      
+      # Since we didn't have the SDK on your PC to generate the Android scaffolding,
+      # we are forcing the Cloud to do it for us right now!
+      - name: Generate Missing Flutter Boilerplate
+        run: |
+          flutter create temp_app --platforms=android
+          cp -r temp_app/android ./android
+          rm -rf temp_app
+          
       - run: flutter pub get
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v3
@@ -31,10 +40,19 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+      
       - run: flutter config --enable-windows-desktop
+      
+      # Force Windows Cloud to generate the Windows Scaffolding:
+      - name: Generate Missing Flutter Boilerplate
+        run: |
+          flutter create temp_app --platforms=windows
+          Copy-Item -Path "temp_app\windows" -Destination "windows" -Recurse
+          Remove-Item -Path "temp_app" -Recurse -Force
+          
       - run: flutter pub get
       - run: flutter build windows --release
       - uses: actions/upload-artifact@v3
         with:
           name: Wault-Windows-EXE
-          path: build/windows/runner/Release
+          path: build\windows\x64\runner\Release
