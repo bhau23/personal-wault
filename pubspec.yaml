@@ -1,0 +1,41 @@
+name: wault_secure
+description: "A secure, offline-first cross-platform password manager."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI & Theming
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.2.1
+  flutter_animate: ^4.5.0
+  glassmorphism: ^3.0.0
+  lottie: ^3.1.2
+
+  # Encryption & Security
+  encrypt: ^5.0.3
+  crypto: ^3.0.3
+  flutter_secure_storage: ^9.2.2
+
+  # Firebase & Offline Sync
+  firebase_core: ^2.32.0
+  firebase_auth: ^4.19.4
+  cloud_firestore: ^4.17.2
+
+  # State Management & Utils
+  provider: ^6.1.2
+  shared_preferences: ^2.2.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "116469235544",
+    "project_id": "wault--mobile",
+    "storage_bucket": "wault--mobile.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:116469235544:android:010508f7d5000ca13c2f2d",
+        "android_client_info": {
+          "package_name": "com.wault.secure"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD-8OuvfnzN8_9oqBd_tQKk9o0E_xQluUI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
