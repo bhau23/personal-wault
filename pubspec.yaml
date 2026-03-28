@@ -15,18 +15,16 @@ dependencies:
   cupertino_icons: ^1.0.6
   google_fonts: ^6.2.1
   flutter_animate: ^4.5.0
-  glassmorphism: ^3.0.0
-  lottie: ^3.1.2
 
   # Encryption & Security
   encrypt: ^5.0.3
   crypto: ^3.0.3
   flutter_secure_storage: ^9.2.2
 
-  # Firebase & Offline Sync
-  firebase_core: ^2.32.0
-  firebase_auth: ^4.19.4
-  cloud_firestore: ^4.17.2
+  # Local Database
+  sqflite: ^2.3.2
+  path_provider: ^2.1.2
+  path: ^1.9.0
 
   # State Management & Utils
   provider: ^6.1.2

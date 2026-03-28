@@ -17,15 +17,20 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-      
-      # Since we didn't have the SDK on your PC to generate the Android scaffolding,
-      # we are forcing the Cloud to do it for us right now!
-      - name: Generate Missing Flutter Boilerplate
+
+      # Generate Android scaffolding since it's not in the repo
+      - name: Generate Android Scaffolding
         run: |
           flutter create temp_app --platforms=android
           cp -r temp_app/android ./android
           rm -rf temp_app
-          
+
+      # flutter_secure_storage and sqflite need minSdkVersion 21+
+      - name: Set minSdkVersion
+        run: |
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' android/app/build.gradle
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/' android/app/build.gradle
+
       - run: flutter pub get
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4
@@ -40,16 +45,16 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-      
+
       - run: flutter config --enable-windows-desktop
-      
-      # Force Windows Cloud to generate the Windows Scaffolding:
-      - name: Generate Missing Flutter Boilerplate
+
+      # Generate Windows scaffolding since it's not in the repo
+      - name: Generate Windows Scaffolding
         run: |
           flutter create temp_app --platforms=windows
           Copy-Item -Path "temp_app\windows" -Destination "windows" -Recurse
           Remove-Item -Path "temp_app" -Recurse -Force
-          
+
       - run: flutter pub get
       - run: flutter build windows --release
       - uses: actions/upload-artifact@v4
