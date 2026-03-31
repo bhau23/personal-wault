@@ -29,7 +29,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _checkSetup() async {
     final setup = await _auth.isSetup();
     setState(() {
-      _isSetup = !setup;
+      _isSetup = !setup; // true = needs initial setup
       _isLoading = false;
     });
   }
@@ -37,7 +37,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _submit() async {
     final password = _passwordController.text.trim();
     if (password.length < 6) {
-      setState(() => _error = 'Password must be at least 6 characters');
+      setState(() => _error = 'Master password must be at least 6 characters');
       return;
     }
 
@@ -104,7 +104,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   .scale(begin: const Offset(0.8, 0.8)),
               const SizedBox(height: 24),
               Text(
-                'Wault Secure',
+                'Master Password',
                 style: theme.textTheme.headlineMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
@@ -113,11 +113,10 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: 8),
               Text(
                 _isSetup
-                    ? 'Create a master password to get started'
+                    ? 'Create a master password to encrypt your vault.\nUse the same password on all your devices.'
                     : 'Enter your master password to unlock',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.white54,
-                ),
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: Colors.white54),
                 textAlign: TextAlign.center,
               ).animate().fadeIn(delay: 300.ms),
               const SizedBox(height: 40),
@@ -125,7 +124,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 controller: _passwordController,
                 obscureText: _obscurePassword,
                 autofocus: true,
-                onSubmitted: (_) => _submit(),
+                onSubmitted: (_) =>
+                    _isSetup ? null : _submit(), // submit on enter for login
                 decoration: InputDecoration(
                   labelText: 'Master Password',
                   prefixIcon: const Icon(Icons.key_rounded),
@@ -145,7 +145,7 @@ class _AuthScreenState extends State<AuthScreen> {
                   obscureText: _obscureConfirm,
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
-                    labelText: 'Confirm Password',
+                    labelText: 'Confirm Master Password',
                     prefixIcon: const Icon(Icons.key_rounded),
                     suffixIcon: IconButton(
                       icon: Icon(_obscureConfirm
@@ -159,9 +159,18 @@ class _AuthScreenState extends State<AuthScreen> {
               ],
               if (_error != null) ...[
                 const SizedBox(height: 16),
-                Text(
-                  _error!,
-                  style: TextStyle(color: theme.colorScheme.error),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.error.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _error!,
+                    style: TextStyle(
+                        color: theme.colorScheme.error, fontSize: 13),
+                  ),
                 ),
               ],
               const SizedBox(height: 32),

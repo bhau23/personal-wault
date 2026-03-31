@@ -18,18 +18,25 @@ jobs:
         with:
           channel: 'stable'
 
-      # Generate Android scaffolding since it's not in the repo
+      # Generate Android scaffolding with correct package name for Firebase
       - name: Generate Android Scaffolding
         run: |
-          flutter create temp_app --platforms=android
+          flutter create temp_app --platforms=android --org com.wault --project-name secure
           cp -r temp_app/android ./android
           rm -rf temp_app
 
-      # flutter_secure_storage and sqflite need minSdkVersion 21+
-      - name: Set minSdkVersion
+      # flutter_secure_storage needs minSdkVersion 21+
+      # Handle both Groovy and Kotlin DSL build files
+      - name: Configure Android Build
         run: |
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' android/app/build.gradle
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/' android/app/build.gradle
+          # Set minSdkVersion to 21 (for flutter_secure_storage)
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' android/app/build.gradle
+            sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/' android/app/build.gradle
+          fi
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' android/app/build.gradle.kts
+          fi
 
       - run: flutter pub get
       - run: flutter build apk --release
@@ -48,10 +55,10 @@ jobs:
 
       - run: flutter config --enable-windows-desktop
 
-      # Generate Windows scaffolding since it's not in the repo
+      # Generate Windows scaffolding
       - name: Generate Windows Scaffolding
         run: |
-          flutter create temp_app --platforms=windows
+          flutter create temp_app --platforms=windows --org com.wault --project-name secure
           Copy-Item -Path "temp_app\windows" -Destination "windows" -Recurse
           Remove-Item -Path "temp_app" -Recurse -Force
 

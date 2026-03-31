@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/credential.dart';
-import '../services/database_service.dart';
+import '../services/firestore_service.dart';
 import '../services/auth_service.dart';
 import 'add_edit_screen.dart';
 
@@ -25,36 +26,49 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _db = DatabaseService();
+  final _firestore = FirestoreService();
   final _searchController = TextEditingController();
-  List<Credential> _credentials = [];
   String _selectedCategory = 'All';
   bool _showFavorites = false;
   bool _isSearching = false;
-  bool _isLoading = true;
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
-    _loadCredentials();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _firestore.setUser(user.uid);
+    }
   }
 
-  Future<void> _loadCredentials() async {
-    setState(() => _isLoading = true);
-    final creds = await _db.getCredentials(
-      search: _searchController.text.isEmpty ? null : _searchController.text,
-      category: _selectedCategory == 'All' ? null : _selectedCategory,
-      favoritesOnly: _showFavorites,
-    );
-    setState(() {
-      _credentials = creds;
-      _isLoading = false;
-    });
+  List<Credential> _filterCredentials(List<Credential> all) {
+    var filtered = all;
+
+    if (_selectedCategory != 'All') {
+      filtered =
+          filtered.where((c) => c.category == _selectedCategory).toList();
+    }
+    if (_showFavorites) {
+      filtered = filtered.where((c) => c.isFavorite).toList();
+    }
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      filtered = filtered
+          .where((c) =>
+              c.title.toLowerCase().contains(q) ||
+              (c.username?.toLowerCase().contains(q) ?? false) ||
+              (c.email?.toLowerCase().contains(q) ?? false) ||
+              (c.url?.toLowerCase().contains(q) ?? false) ||
+              (c.apiKey?.toLowerCase().contains(q) ?? false) ||
+              (c.notes?.toLowerCase().contains(q) ?? false))
+          .toList();
+    }
+    return filtered;
   }
 
   Future<void> _toggleFavorite(Credential cred) async {
-    await _db.toggleFavorite(cred.id!, !cred.isFavorite);
-    _loadCredentials();
+    await _firestore.toggleFavorite(cred);
   }
 
   Future<void> _deleteCredential(Credential cred) async {
@@ -74,9 +88,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
-    if (confirmed == true) {
-      await _db.deleteCredential(cred.id!);
-      _loadCredentials();
+    if (confirmed == true && cred.id != null) {
+      await _firestore.deleteCredential(cred.id!);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Credential deleted')),
@@ -86,13 +99,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openAddEdit({Credential? credential}) async {
-    final result = await Navigator.push<bool>(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => AddEditScreen(credential: credential),
       ),
     );
-    if (result == true) _loadCredentials();
+    // No need to reload - StreamBuilder handles it automatically
   }
 
   void _copyToClipboard(String label, String? value) {
@@ -101,6 +114,16 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$label copied to clipboard')),
     );
+  }
+
+  void _lock() {
+    AuthService().lock();
+    widget.onLock();
+  }
+
+  void _signOut() async {
+    AuthService().lock();
+    await FirebaseAuth.instance.signOut();
   }
 
   IconData _categoryIcon(String category) {
@@ -143,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   border: InputBorder.none,
                   filled: false,
                 ),
-                onChanged: (_) => _loadCredentials(),
+                onChanged: (val) => setState(() => _searchQuery = val),
               )
             : Row(
                 children: [
@@ -162,28 +185,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 _isSearching = !_isSearching;
                 if (!_isSearching) {
                   _searchController.clear();
-                  _loadCredentials();
+                  _searchQuery = '';
                 }
               });
             },
           ),
           IconButton(
             icon: Icon(
-              _showFavorites ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+              _showFavorites
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
               color: _showFavorites ? Colors.redAccent : null,
             ),
-            onPressed: () {
-              setState(() => _showFavorites = !_showFavorites);
-              _loadCredentials();
-            },
+            onPressed: () => setState(() => _showFavorites = !_showFavorites),
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded),
             onSelected: (val) {
-              if (val == 'lock') {
-                AuthService().lock();
-                widget.onLock();
-              }
+              if (val == 'lock') _lock();
+              if (val == 'signout') _signOut();
             },
             itemBuilder: (_) => [
               const PopupMenuItem(
@@ -191,6 +211,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: ListTile(
                   leading: Icon(Icons.lock_outline_rounded),
                   title: Text('Lock Vault'),
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'signout',
+                child: ListTile(
+                  leading: Icon(Icons.logout_rounded),
+                  title: Text('Sign Out'),
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                 ),
@@ -215,34 +244,60 @@ class _HomeScreenState extends State<HomeScreen> {
                 return FilterChip(
                   label: Text(cat),
                   selected: isSelected,
-                  onSelected: (_) {
-                    setState(() => _selectedCategory = cat);
-                    _loadCredentials();
-                  },
-                  avatar: isSelected
-                      ? null
-                      : Icon(_categoryIcon(cat), size: 16),
+                  onSelected: (_) =>
+                      setState(() => _selectedCategory = cat),
+                  avatar:
+                      isSelected ? null : Icon(_categoryIcon(cat), size: 16),
                 );
               },
             ),
           ),
           const SizedBox(height: 8),
-          // Credentials list
+          // Real-time credential list from Firestore
           Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _credentials.isEmpty
-                    ? _buildEmptyState(theme)
-                    : RefreshIndicator(
-                        onRefresh: _loadCredentials,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 8),
-                          itemCount: _credentials.length,
-                          itemBuilder: (_, i) =>
-                              _buildCredentialCard(_credentials[i], theme),
-                        ),
-                      ),
+            child: StreamBuilder<List<Credential>>(
+              stream: _firestore.watchCredentials(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    !snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline,
+                            size: 48, color: Colors.redAccent),
+                        const SizedBox(height: 12),
+                        Text('Failed to load credentials',
+                            style: theme.textTheme.bodyLarge),
+                        const SizedBox(height: 4),
+                        Text('${snapshot.error}',
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: Colors.white38)),
+                      ],
+                    ),
+                  );
+                }
+
+                final all = snapshot.data ?? [];
+                final filtered = _filterCredentials(all);
+
+                if (filtered.isEmpty) {
+                  return _buildEmptyState(theme, all.isEmpty);
+                }
+
+                return ListView.builder(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  itemCount: filtered.length,
+                  itemBuilder: (_, i) =>
+                      _buildCredentialCard(filtered[i], theme),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -254,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildEmptyState(ThemeData theme) {
+  Widget _buildEmptyState(ThemeData theme, bool vaultEmpty) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -263,19 +318,18 @@ class _HomeScreenState extends State<HomeScreen> {
               size: 64, color: Colors.white.withOpacity(0.2)),
           const SizedBox(height: 16),
           Text(
-            _showFavorites
-                ? 'No favorites yet'
-                : _selectedCategory != 'All'
-                    ? 'No credentials in this category'
-                    : 'Your vault is empty',
-            style: theme.textTheme.titleMedium
-                ?.copyWith(color: Colors.white54),
+            vaultEmpty
+                ? 'Your vault is empty'
+                : _showFavorites
+                    ? 'No favorites yet'
+                    : 'No credentials in this category',
+            style:
+                theme.textTheme.titleMedium?.copyWith(color: Colors.white54),
           ),
           const SizedBox(height: 8),
           Text(
             'Tap + to add your first credential',
-            style:
-                theme.textTheme.bodySmall?.copyWith(color: Colors.white30),
+            style: theme.textTheme.bodySmall?.copyWith(color: Colors.white30),
           ),
         ],
       ),
@@ -283,8 +337,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCredentialCard(Credential cred, ThemeData theme) {
-    final hasPassword =
-        cred.password != null && cred.password!.isNotEmpty;
+    final hasPassword = cred.password != null && cred.password!.isNotEmpty;
     final hasApiKey = cred.apiKey != null && cred.apiKey!.isNotEmpty;
     final subtitle = cred.username ?? cred.email ?? cred.url ?? '';
 
@@ -293,6 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: () => _openAddEdit(credential: cred),
+        onLongPress: () => _deleteCredential(cred),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -324,37 +378,33 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 3),
                       Text(
                         subtitle,
-                        style: TextStyle(
-                            color: Colors.white54, fontSize: 13),
+                        style:
+                            const TextStyle(color: Colors.white54, fontSize: 13),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ],
                     const SizedBox(height: 6),
-                    // Category badge
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color:
-                            theme.colorScheme.primary.withOpacity(0.08),
+                        color: theme.colorScheme.primary.withOpacity(0.08),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         cred.category,
                         style: TextStyle(
-                            fontSize: 11,
-                            color: theme.colorScheme.primary),
+                            fontSize: 11, color: theme.colorScheme.primary),
                       ),
                     ),
                   ],
                 ),
               ),
-              // Action buttons
+              // Actions
               Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Favorite
                   InkWell(
                     borderRadius: BorderRadius.circular(20),
                     onTap: () => _toggleFavorite(cred),
@@ -365,13 +415,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             ? Icons.favorite_rounded
                             : Icons.favorite_border_rounded,
                         size: 20,
-                        color: cred.isFavorite
-                            ? Colors.redAccent
-                            : Colors.white30,
+                        color:
+                            cred.isFavorite ? Colors.redAccent : Colors.white30,
                       ),
                     ),
                   ),
-                  // Copy password or API key
                   if (hasPassword)
                     InkWell(
                       borderRadius: BorderRadius.circular(20),

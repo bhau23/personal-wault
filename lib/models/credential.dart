@@ -1,5 +1,5 @@
 class Credential {
-  final int? id;
+  final String? id; // Firestore document ID
   final String title;
   final String category;
   final String? username;
@@ -25,8 +25,9 @@ class Credential {
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
+  /// Converts to a map for JSON encoding before encryption.
+  /// Does NOT include [id] since that's the Firestore doc ID.
   Map<String, dynamic> toMap() => {
-        if (id != null) 'id': id,
         'title': title,
         'category': category,
         'username': username ?? '',
@@ -39,8 +40,9 @@ class Credential {
         'created_at': createdAt.toIso8601String(),
       };
 
-  factory Credential.fromMap(Map<String, dynamic> map) => Credential(
-        id: map['id'] as int?,
+  factory Credential.fromMap(Map<String, dynamic> map, {String? id}) =>
+      Credential(
+        id: id,
         title: map['title'] as String? ?? '',
         category: map['category'] as String? ?? 'General',
         username: _nullIfEmpty(map['username']),
@@ -49,7 +51,7 @@ class Credential {
         url: _nullIfEmpty(map['url']),
         apiKey: _nullIfEmpty(map['api_key']),
         notes: _nullIfEmpty(map['notes']),
-        isFavorite: (map['is_favorite'] as int?) == 1,
+        isFavorite: (map['is_favorite'] as num?)?.toInt() == 1,
         createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ??
             DateTime.now(),
       );
@@ -61,7 +63,7 @@ class Credential {
   }
 
   Credential copyWith({
-    int? id,
+    String? id,
     String? title,
     String? category,
     String? username,

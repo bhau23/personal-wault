@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../models/credential.dart';
-import '../services/database_service.dart';
+import '../services/firestore_service.dart';
 import '../services/encryption_service.dart';
 import 'home_screen.dart' show defaultCategories;
 
@@ -15,7 +16,7 @@ class AddEditScreen extends StatefulWidget {
 
 class _AddEditScreenState extends State<AddEditScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _db = DatabaseService();
+  final _firestore = FirestoreService();
 
   late final TextEditingController _titleCtrl;
   late final TextEditingController _usernameCtrl;
@@ -31,13 +32,16 @@ class _AddEditScreenState extends State<AddEditScreen> {
 
   bool get isEditing => widget.credential != null;
 
-  // Categories excluding 'All'
   List<String> get _categories =>
       defaultCategories.where((c) => c != 'All').toList();
 
   @override
   void initState() {
     super.initState();
+    // Set Firestore user
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) _firestore.setUser(user.uid);
+
     final c = widget.credential;
     _titleCtrl = TextEditingController(text: c?.title ?? '');
     _usernameCtrl = TextEditingController(text: c?.username ?? '');
@@ -80,17 +84,22 @@ class _AddEditScreenState extends State<AddEditScreen> {
       createdAt: widget.credential?.createdAt,
     );
 
-    if (isEditing) {
-      await _db.updateCredential(cred);
-    } else {
-      await _db.insertCredential(cred);
+    try {
+      await _firestore.saveCredential(cred);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-
-    if (mounted) Navigator.pop(context, true);
   }
 
   Future<void> _delete() async {
-    if (widget.credential == null) return;
+    if (widget.credential?.id == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -109,14 +118,13 @@ class _AddEditScreenState extends State<AddEditScreen> {
       ),
     );
     if (confirmed == true) {
-      await _db.deleteCredential(widget.credential!.id!);
-      if (mounted) Navigator.pop(context, true);
+      await _firestore.deleteCredential(widget.credential!.id!);
+      if (mounted) Navigator.pop(context);
     }
   }
 
   void _generatePassword() {
-    final password = EncryptionService.generatePassword();
-    _passwordCtrl.text = password;
+    _passwordCtrl.text = EncryptionService.generatePassword();
     setState(() => _obscurePassword = false);
   }
 
@@ -130,15 +138,14 @@ class _AddEditScreenState extends State<AddEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       appBar: AppBar(
         title: Text(isEditing ? 'Edit Credential' : 'Add Credential'),
         actions: [
           if (isEditing)
             IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent),
+              icon: const Icon(Icons.delete_outline_rounded,
+                  color: Colors.redAccent),
               onPressed: _delete,
             ),
         ],
@@ -161,7 +168,7 @@ class _AddEditScreenState extends State<AddEditScreen> {
             ),
             const SizedBox(height: 16),
 
-            // Category dropdown
+            // Category
             DropdownButtonFormField<String>(
               value: _categories.contains(_category) ? _category : 'General',
               decoration: const InputDecoration(
@@ -171,7 +178,8 @@ class _AddEditScreenState extends State<AddEditScreen> {
               items: _categories
                   .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                   .toList(),
-              onChanged: (val) => setState(() => _category = val ?? 'General'),
+              onChanged: (val) =>
+                  setState(() => _category = val ?? 'General'),
             ),
             const SizedBox(height: 16),
 
@@ -181,13 +189,7 @@ class _AddEditScreenState extends State<AddEditScreen> {
               decoration: InputDecoration(
                 labelText: 'Username',
                 prefixIcon: const Icon(Icons.person_rounded),
-                suffixIcon: _usernameCtrl.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.copy_rounded, size: 18),
-                        onPressed: () =>
-                            _copyField('Username', _usernameCtrl.text),
-                      )
-                    : null,
+                suffixIcon: _copyBtn('Username', _usernameCtrl),
               ),
               textInputAction: TextInputAction.next,
             ),
@@ -199,13 +201,7 @@ class _AddEditScreenState extends State<AddEditScreen> {
               decoration: InputDecoration(
                 labelText: 'Email',
                 prefixIcon: const Icon(Icons.email_rounded),
-                suffixIcon: _emailCtrl.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.copy_rounded, size: 18),
-                        onPressed: () =>
-                            _copyField('Email', _emailCtrl.text),
-                      )
-                    : null,
+                suffixIcon: _copyBtn('Email', _emailCtrl),
               ),
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
@@ -234,12 +230,6 @@ class _AddEditScreenState extends State<AddEditScreen> {
                       tooltip: 'Generate password',
                       onPressed: _generatePassword,
                     ),
-                    if (_passwordCtrl.text.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.copy_rounded, size: 18),
-                        onPressed: () =>
-                            _copyField('Password', _passwordCtrl.text),
-                      ),
                   ],
                 ),
               ),
@@ -273,15 +263,9 @@ class _AddEditScreenState extends State<AddEditScreen> {
                       icon: Icon(_obscureApiKey
                           ? Icons.visibility_off_rounded
                           : Icons.visibility_rounded),
-                      onPressed: () =>
-                          setState(() => _obscureApiKey = !_obscureApiKey),
+                      onPressed: () => setState(
+                          () => _obscureApiKey = !_obscureApiKey),
                     ),
-                    if (_apiKeyCtrl.text.isNotEmpty)
-                      IconButton(
-                        icon: const Icon(Icons.copy_rounded, size: 18),
-                        onPressed: () =>
-                            _copyField('API Key', _apiKeyCtrl.text),
-                      ),
                   ],
                 ),
               ),
@@ -312,14 +296,24 @@ class _AddEditScreenState extends State<AddEditScreen> {
                         height: 18,
                         width: 18,
                         child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(isEditing ? Icons.save_rounded : Icons.add_rounded),
-                label: Text(isEditing ? 'Save Changes' : 'Add Credential'),
+                    : Icon(
+                        isEditing ? Icons.save_rounded : Icons.add_rounded),
+                label:
+                    Text(isEditing ? 'Save Changes' : 'Add Credential'),
               ),
             ),
             const SizedBox(height: 20),
           ],
         ),
       ),
+    );
+  }
+
+  Widget? _copyBtn(String label, TextEditingController ctrl) {
+    if (ctrl.text.isEmpty) return null;
+    return IconButton(
+      icon: const Icon(Icons.copy_rounded, size: 18),
+      onPressed: () => _copyField(label, ctrl.text),
     );
   }
 }
