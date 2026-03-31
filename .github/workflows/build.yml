@@ -49,11 +49,22 @@ jobs:
           fi
 
           # --- Project-level settings (android/settings.gradle.kts or android/build.gradle) ---
+          # In modern Flutter, settings.gradle.kts has a top-level plugins{} block
+          # (separate from pluginManagement). We add the Google Services plugin there.
           if [ -f android/settings.gradle.kts ]; then
-            # Kotlin DSL: add Google Services plugin to pluginManagement plugins block
-            sed -i '/pluginManagement {/,/^}/ {
-              /plugins {/a\        id("com.google.gms.google-services") version "4.4.2" apply false
-            }' android/settings.gradle.kts
+            # Find the top-level plugins block (after pluginManagement) and add our plugin
+            # Use awk to insert after the LAST 'plugins {' line (which is the top-level one)
+            awk '
+              /^plugins \{/ { found=NR }
+              { lines[NR]=$0 }
+              END {
+                for(i=1;i<=NR;i++) {
+                  print lines[i]
+                  if(i==found) print "    id(\"com.google.gms.google-services\") version \"4.4.2\" apply false"
+                }
+              }
+            ' android/settings.gradle.kts > android/settings.gradle.kts.tmp
+            mv android/settings.gradle.kts.tmp android/settings.gradle.kts
           elif [ -f android/build.gradle ]; then
             # Groovy DSL: add classpath to buildscript dependencies
             sed -i '/dependencies {/a\        classpath "com.google.gms:google-services:4.4.2"' android/build.gradle
