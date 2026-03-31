@@ -25,17 +25,38 @@ jobs:
           cp -r temp_app/android ./android
           rm -rf temp_app
 
-      # flutter_secure_storage needs minSdkVersion 21+
-      # Handle both Groovy and Kotlin DSL build files
+      # Copy Firebase config from repo (directory has a typo in the repo)
+      - name: Copy google-services.json
+        run: cp andriod/app/google-services.json android/app/google-services.json
+
+      # Configure Android build for Firebase and flutter_secure_storage
       - name: Configure Android Build
         run: |
-          # Set minSdkVersion to 21 (for flutter_secure_storage)
-          if [ -f android/app/build.gradle ]; then
-            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' android/app/build.gradle
-            sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 21/' android/app/build.gradle
-          fi
+          # --- App-level build file (android/app/build.gradle.kts or build.gradle) ---
           if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 21/' android/app/build.gradle.kts
+            # Kotlin DSL: set minSdk, compileSdk, and add Google Services plugin
+            sed -i 's/minSdk = .*/minSdk = 21/' android/app/build.gradle.kts
+            sed -i 's/compileSdk = .*/compileSdk = 34/' android/app/build.gradle.kts
+            # Add Google Services plugin to plugins block
+            sed -i '/^plugins {/a\    id("com.google.gms.google-services")' android/app/build.gradle.kts
+          elif [ -f android/app/build.gradle ]; then
+            # Groovy DSL: set minSdk, compileSdk, and add Google Services plugin
+            sed -i 's/minSdkVersion .*/minSdkVersion 21/' android/app/build.gradle
+            sed -i 's/minSdk .*/minSdk 21/' android/app/build.gradle
+            sed -i 's/compileSdkVersion .*/compileSdkVersion 34/' android/app/build.gradle
+            sed -i 's/compileSdk .*/compileSdk 34/' android/app/build.gradle
+            echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
+          fi
+
+          # --- Project-level settings (android/settings.gradle.kts or android/build.gradle) ---
+          if [ -f android/settings.gradle.kts ]; then
+            # Kotlin DSL: add Google Services plugin to pluginManagement plugins block
+            sed -i '/pluginManagement {/,/^}/ {
+              /plugins {/a\        id("com.google.gms.google-services") version "4.4.2" apply false
+            }' android/settings.gradle.kts
+          elif [ -f android/build.gradle ]; then
+            # Groovy DSL: add classpath to buildscript dependencies
+            sed -i '/dependencies {/a\        classpath "com.google.gms:google-services:4.4.2"' android/build.gradle
           fi
 
       - run: flutter pub get
